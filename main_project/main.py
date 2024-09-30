@@ -11,8 +11,8 @@ from datetime import timedelta
 from pydantic import BaseModel, EmailStr, field_validator
 from backend import (
     get_password_hash, authenticate_user, create_access_token,
-    get_current_user, verify_password, fake_users_db, add_part_to_db, add_part_parameters_to_db,
-    remove_part_from_db, ADMIN_PASSWORD
+    get_current_user, verify_password, add_part_to_db, add_part_parameters_to_db,
+    remove_part_from_db, ADMIN_PASSWORD, direct_db
 
 )
 
@@ -78,7 +78,7 @@ async def register_page(request: Request):
 @app.post("/login")
 async def login(username: str = Form(...), password: str = Form(...)):
     # Check if user exists in the fake database
-    user = fake_users_db.get(username)
+    user = db.get(username)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -199,7 +199,7 @@ async def add_part_parameters(
     
 ):
     try:
-        add_part_parameters_to_db(db, car_name, manufacturer, year, engine_type)
+        add_part_parameters_to_db( car_name, manufacturer, year, engine_type)
         return HTMLResponse(content="""
         <html>
         <head>
@@ -220,7 +220,7 @@ async def remove_part(id: int = Form(...), admin_code: str = Form(...)):
         if admin_code != ADMIN_PASSWORD:
             raise HTTPException(status_code=403, detail="Unauthorized: Incorrect Admin Code")
         
-        remove_part_from_db(db, id)
+        remove_part_from_db( id)
         return HTMLResponse(content="""
         <html>
         <head>
@@ -237,4 +237,9 @@ async def remove_part(id: int = Form(...), admin_code: str = Form(...)):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)
+
+
+
+
+
 
