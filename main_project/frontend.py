@@ -1,6 +1,6 @@
 import random
 from sqlalchemy.orm import Session
-from backend import Part, CarParameter
+from db_models import Part, CarParameter
 
 car_messages = [
     "Speed is the ultimate thrill!",

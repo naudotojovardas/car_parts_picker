@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Form, Depends, HTTPException, File, UploadFile, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
+import frontend
 from frontend import generate_html_content
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -8,13 +9,14 @@ from starlette.requests import Request
 import os
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
-from pydantic import BaseModel, EmailStr, field_validator
 from backend import (
     get_password_hash, authenticate_user, create_access_token,
-    get_current_user, verify_password, add_part_to_db, add_part_parameters_to_db,
-    remove_part_from_db, ADMIN_PASSWORD, direct_db
-
+    get_current_user, verify_password,
+     ADMIN_PASSWORD
 )
+from db_models import  add_part_to_db, add_part_parameters_to_db, remove_part_from_db, User
+from pydantic_models import Token
+from database import get_db
 
 app = FastAPI()
 
@@ -22,14 +24,12 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Directory where uploaded photos will be stored
 UPLOAD_DIR = "uploaded_photos"
-
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
-# Mount static directory
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Load templates
+# Mount static directory an Load templates
+app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # Title page route
@@ -39,26 +39,13 @@ async def title_page(request: Request):
 
 # Main webpage route
 @app.get("/main", response_class=HTMLResponse)
-async def read_root():
+async def read_root(db: Session = Depends(get_db)):
     try:
-        html_content = generate_html_content(fake_users_db)
+        html_content = generate_html_content(db)
         return HTMLResponse(content=html_content)
     except Exception as e:
         return HTMLResponse(content=f"<h1>Error: {e}</h1>")
 
-
-# Pydantic Models
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-class User(BaseModel):
-    username: str
-    email: EmailStr
-    hashed_password: str
-
-class UserInDB(User):
-    hashed_password: str
 
 
 
@@ -75,52 +62,56 @@ async def register_page(request: Request):
 
 
 # Handle login form submission
+# @app.post("/login")
+# async def login(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+#     user = authenticate_user(username, password, db)
+#     if not user:
+#         raise HTTPException(
+#             status_code=status.HTTP_401_UNAUTHORIZED,
+#             detail="Invalid username or password",
+#         )
+
+#     # Redirect to the main page upon successful login
+#     return RedirectResponse(url="/main", status_code=303)
+
 @app.post("/login")
-async def login(username: str = Form(...), password: str = Form(...)):
-    # Check if user exists in the fake database
-    user = db.get(username)
+async def login(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    print(f"Login attempt for user: {username}")
+    
+    # Use the session `db` to query the database
+    user = authenticate_user(username, password, db)
     if not user:
+        print(f"Authentication failed for user: {username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
 
-    # Verify the password using the hashed password
-    if not verify_password(password, user["hashed_password"]):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password",
-        )
-
-    # Redirect to the main page upon successful login
+    print(f"Login successful for user: {username}")
     return RedirectResponse(url="/main", status_code=303)
 
-
 # Register a User
-@field_validator('email')
 @app.post("/register")
-async def register(username: str = Form(...), email: str = Form(...), password: str = Form(...)):
-    if username in fake_users_db:
+async def register(username: str = Form(...), email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    user_in_db = db.query(User).filter(User.email == email).first()
+    if user_in_db:
         raise HTTPException(status_code=400, detail="Username already registered")
     
     hashed_password = get_password_hash(password)    
-    fake_users_db[username] = {
-            "username": username,
-            "email": email,
-            "hashed_password": hashed_password}
+    new_user = User(email=email, username=username, hashed_password=hashed_password)
+
+    # Add new user to the database and commit
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
     
     return RedirectResponse(url="/main", status_code=303)
-
-
-@app.get("/success", response_class=HTMLResponse)
-async def success_page(request: Request):
-    return templates.TemplateResponse("success.html", {"request": request})
     
 
 # Login User and Issue Token
-@app.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = authenticate_user(form_data.username, form_data.password)
+@app.post("/token")
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -130,10 +121,10 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user["username"]}, expires_delta=access_token_expires
+        data={"sub": user.username},  # Use 'user.username' from the User model, not dictionary
+        expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
-
 
 
 
