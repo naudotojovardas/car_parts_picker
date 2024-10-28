@@ -1,11 +1,12 @@
 # DB models
 
-from sqlalchemy import Column, Integer, String, Float, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from database import Base
+import datetime
 
 class User(Base):
     __tablename__ = 'users'
@@ -27,8 +28,22 @@ class Part(Base):
     part_number = Column(String)
     manufacturer = Column(String)
     photo_path = Column(String)
+    add_to_cart = Column(Boolean, default=False)
 
     part_parameters = relationship("CarParameter", back_populates="parts")
+
+# class Cart(Base):
+#     __tablename__ = 'cart'
+#     id = Column(Integer, primary_key=True, index=True)
+#     user_id = Column(Integer, ForeignKey('users.id'))
+#     product_id = Column(Integer, ForeignKey('part.id'))
+#     quantity = Column(Integer, default=1)
+#     created_at = Column(default=datetime.datetime.utcnow)
+
+#     user = relationship("User", back_populates="cart_items")
+#     product = relationship("Part")
+
+# User.cart_items = relationship("Cart", back_populates="user")
 
 
 class CarParameter(Base):
@@ -58,6 +73,7 @@ def add_part_to_db(db: Session, name: str, description: str, price: float, curre
 
 # 16. Add car part parameters to the `part_parameters` table in the database.
 def add_part_parameters_to_db(db: Session, car_name: str, manufacturer: str, year: int, engine_type: str):
+    print(f"engine type is {engine_type} 2")
     new_part_parameter = CarParameter(
         car_name=car_name,
         manufacturer=manufacturer,

@@ -11,7 +11,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
 from backend import (
     get_password_hash, authenticate_user, create_access_token,
-    get_current_user, verify_password,
+    get_current_user,
      ADMIN_PASSWORD
 )
 from db_models import  add_part_to_db, add_part_parameters_to_db, remove_part_from_db, User
@@ -23,7 +23,7 @@ app = FastAPI()
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Directory where uploaded photos will be stored
-UPLOAD_DIR = "uploaded_photos"
+UPLOAD_DIR = "static/uploaded_photos"
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
@@ -54,45 +54,32 @@ async def read_root(db: Session = Depends(get_db)):
 async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
 
-# Register page route
+
 @app.get("/register", response_class=HTMLResponse)
-async def register_page(request: Request):
+async def show_registration_form(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
 
 
-
-# Handle login form submission
-# @app.post("/login")
-# async def login(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
-#     user = authenticate_user(username, password, db)
-#     if not user:
-#         raise HTTPException(
-#             status_code=status.HTTP_401_UNAUTHORIZED,
-#             detail="Invalid username or password",
-#         )
-
-#     # Redirect to the main page upon successful login
-#     return RedirectResponse(url="/main", status_code=303)
-
 @app.post("/login")
-async def login(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
-    print(f"Login attempt for user: {username}")
+async def login(email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    print(f"Login attempt for user: {email}")
     
     # Use the session `db` to query the database
-    user = authenticate_user(username, password, db)
+    user = authenticate_user(email, password, db)
     if not user:
-        print(f"Authentication failed for user: {username}")
+        print(f"Authentication failed for user: {email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
 
-    print(f"Login successful for user: {username}")
+    print(f"Login successful for user: {email}")
     return RedirectResponse(url="/main", status_code=303)
 
+
 # Register a User
-@app.post("/register")
-async def register(username: str = Form(...), email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+@app.post("/register", response_class=HTMLResponse)
+async def register(request: Request, username: str = Form(...), email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
     user_in_db = db.query(User).filter(User.email == email).first()
     if user_in_db:
         raise HTTPException(status_code=400, detail="Username already registered")
@@ -105,7 +92,7 @@ async def register(username: str = Form(...), email: str = Form(...), password: 
     db.commit()
     db.refresh(new_user)
     
-    return RedirectResponse(url="/main", status_code=303)
+    return templates.TemplateResponse("register_success.html", {"request": request})
     
 
 # Login User and Issue Token
@@ -145,7 +132,7 @@ async def add_part(
     stock_quantity: int = Form(...),
     part_parameters: int = Form(None),  # Optional
     file: UploadFile = File(None),  # Optional file upload
-    
+    db: Session = Depends(get_db)
 ):
     try:
         # Save the file to the server if it was uploaded
@@ -164,7 +151,8 @@ async def add_part(
             currency=currency,
             stock_quantity=stock_quantity,
             part_parameters=part_parameters,
-            photo_path=file_location  # Pass the file path to the database
+            photo_path=file_location,  # Pass the file path to the database
+            db = db
         )
 
         return HTMLResponse(content="""
@@ -187,10 +175,11 @@ async def add_part_parameters(
     manufacturer: str = Form(...),
     year: int = Form(...),
     engine_type: str = Form(...),
-    
+    db: Session = Depends(get_db)    
 ):
+    print(f"engine type is {engine_type} 1")
     try:
-        add_part_parameters_to_db( car_name, manufacturer, year, engine_type)
+        add_part_parameters_to_db(db, car_name, manufacturer, year, engine_type)
         return HTMLResponse(content="""
         <html>
         <head>
@@ -206,12 +195,12 @@ async def add_part_parameters(
 
 # Remove part route
 @app.post("/remove_part/", response_class=HTMLResponse)
-async def remove_part(id: int = Form(...), admin_code: str = Form(...)):
+async def remove_part(db: Session = Depends(get_db), id: int = Form(...), admin_code: str = Form(...)):
     try:
         if admin_code != ADMIN_PASSWORD:
             raise HTTPException(status_code=403, detail="Unauthorized: Incorrect Admin Code")
         
-        remove_part_from_db( id)
+        remove_part_from_db(db, id)
         return HTMLResponse(content="""
         <html>
         <head>
@@ -224,13 +213,25 @@ async def remove_part(id: int = Form(...), admin_code: str = Form(...)):
         """)
     except Exception as e:
         return HTMLResponse(content=f"<h1>Error: {e}</h1>")
+    
+
+# @app.get("/cart")
+# def view_cart(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+#     # Fetch all cart items for the current user
+#     cart_items = db.query(Cart).filter(Cart.user_id == current_user.id).all()
+#     print(f"Cart items for user {current_user.id}: {[(item.product_id, item.quantity) for item in cart_items]}")  # Debugging
+#     total = sum(item.product.price * item.quantity for item in cart_items)
+    
+#     # Render cart template with items and total cost
+#     return templates.TemplateResponse("cart.html", {"request": request, "cart_items": cart_items, "total": total})
+
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
 
 
-
+# fastapi dev main_project/main.py
 
 
 

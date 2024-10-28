@@ -51,16 +51,15 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 #         return False
 #     return user
 
-def authenticate_user(username: str, password: str, db: Session):
-    user = db.query(User).filter(User.email == username).first()
+def authenticate_user(email: str, password: str, db: Session):
+    user = db.query(User).filter(User.email == email).first()
     
-    # Add this for debugging
     if not user:
-        print(f"User with email {username} not found.")
+        print(f"User with username {email} not found.")
         return False
     
     if not verify_password(password, user.hashed_password):
-        print(f"Password for {username} does not match.")
+        print(f"Password for {email} does not match.")
         return False
     
     return user
