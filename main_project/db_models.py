@@ -14,6 +14,9 @@ class User(Base):
     username = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
+    role = Column(String, default="user")
+    
+    cart = relationship("Cart", uselist=False, back_populates="user")  # Relationship to Cart
 
 
 class Part(Base):
@@ -28,22 +31,27 @@ class Part(Base):
     part_number = Column(String)
     manufacturer = Column(String)
     photo_path = Column(String)
-    add_to_cart = Column(Boolean, default=False)
 
     part_parameters = relationship("CarParameter", back_populates="parts")
 
-# class Cart(Base):
-#     __tablename__ = 'cart'
-#     id = Column(Integer, primary_key=True, index=True)
-#     user_id = Column(Integer, ForeignKey('users.id'))
-#     product_id = Column(Integer, ForeignKey('part.id'))
-#     quantity = Column(Integer, default=1)
-#     created_at = Column(default=datetime.datetime.utcnow)
+class Cart(Base):
+    __tablename__ = "carts"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # Corrected foreign key
 
-#     user = relationship("User", back_populates="cart_items")
-#     product = relationship("Part")
+    # Relationship to CartItem, with lazy loading of items
+    items = relationship("CartItem", back_populates="cart")
+    user = relationship("User", back_populates="cart")  # Relationship to User
 
-# User.cart_items = relationship("Cart", back_populates="user")
+class CartItem(Base):
+    __tablename__ = "cart_items"
+    id = Column(Integer, primary_key=True, index=True)
+    cart_id = Column(Integer, ForeignKey("carts.id"), nullable=False)
+    part_id = Column(Integer, ForeignKey("parts.id"), nullable=False)
+    quantity = Column(Integer, default=1)
+
+    # Reverse relationship to Cart
+    cart = relationship("Cart", back_populates="items")
 
 
 class CarParameter(Base):

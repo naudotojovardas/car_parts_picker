@@ -1,5 +1,5 @@
-from fastapi import FastAPI, Form, Depends, HTTPException, File, UploadFile, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, Form, Depends, HTTPException, File, UploadFile, status, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 import frontend
 from frontend import generate_html_content
@@ -11,12 +11,14 @@ from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
 from backend import (
     get_password_hash, authenticate_user, create_access_token,
-    get_current_user,
+    get_current_user, pwd_context,
      ADMIN_PASSWORD
 )
-from db_models import  add_part_to_db, add_part_parameters_to_db, remove_part_from_db, User
+from db_models import  add_part_to_db, add_part_parameters_to_db, remove_part_from_db, User, Part
 from pydantic_models import Token
-from database import get_db
+from database import get_db, create_database, get_or_create_cart, CartItem, Cart
+
+create_database()
 
 app = FastAPI()
 
@@ -37,9 +39,20 @@ templates = Jinja2Templates(directory="templates")
 async def title_page(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+@app.get("/shop", response_class=HTMLResponse)
+async def shop(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    products = db.query(Part).all()
+    
+    # Get or create the user's cart and calculate item count
+    cart = get_or_create_cart(db, user.id)
+    cart_count = sum(item.quantity for item in cart.items)
+
+    return templates.TemplateResponse("shop.html", {"request": request, "products": products, "cart_count": cart_count})
+
+
 # Main webpage route
 @app.get("/main", response_class=HTMLResponse)
-async def read_root(db: Session = Depends(get_db)):
+async def read_root(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     try:
         html_content = generate_html_content(db)
         return HTMLResponse(content=html_content)
@@ -61,31 +74,44 @@ async def show_registration_form(request: Request):
 
 
 @app.post("/login")
-async def login(email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
-    print(f"Login attempt for user: {email}")
+async def login(request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    print(f"Login attempt for user: {username}")
     
     # Use the session `db` to query the database
-    user = authenticate_user(email, password, db)
+    user = authenticate_user(username, password, db)
+
     if not user:
-        print(f"Authentication failed for user: {email}")
+        print(f"Authentication failed for user: {username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
+    
+    access_token = create_access_token(data={"sub": user.username})
 
-    print(f"Login successful for user: {email}")
-    return RedirectResponse(url="/main", status_code=303)
+    print(f"Login successful for user: {username}")
+    # return JSONResponse({"access_token": access_token, "token_type": "bearer"})
+    response=RedirectResponse(url="/main", status_code=303)
+    response.set_cookie(
+        key="access_token", 
+        value=access_token, 
+        httponly=True, 
+        secure=True,   # Enable this in production (HTTPS only)
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+    return response
+    # return RedirectResponse(request.url_for("read_root"), status_code=303)
 
 
 # Register a User
 @app.post("/register", response_class=HTMLResponse)
-async def register(request: Request, username: str = Form(...), email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+async def register(request: Request, username: str = Form(...), email: str = Form(...), password: str = Form(...),role: str = Form("user"), db: Session = Depends(get_db)):
     user_in_db = db.query(User).filter(User.email == email).first()
     if user_in_db:
         raise HTTPException(status_code=400, detail="Username already registered")
     
     hashed_password = get_password_hash(password)    
-    new_user = User(email=email, username=username, hashed_password=hashed_password)
+    new_user = User(email=email, username=username, hashed_password=hashed_password, role=role)
 
     # Add new user to the database and commit
     db.add(new_user)
@@ -215,20 +241,68 @@ async def remove_part(db: Session = Depends(get_db), id: int = Form(...), admin_
         return HTMLResponse(content=f"<h1>Error: {e}</h1>")
     
 
-# @app.get("/cart")
-# def view_cart(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-#     # Fetch all cart items for the current user
-#     cart_items = db.query(Cart).filter(Cart.user_id == current_user.id).all()
-#     print(f"Cart items for user {current_user.id}: {[(item.product_id, item.quantity) for item in cart_items]}")  # Debugging
-#     total = sum(item.product.price * item.quantity for item in cart_items)
+@app.put("/admin/set_role/{user_id}")
+async def set_role(user_id: int, role: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Check if the current user is an admin
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can set roles")
     
-#     # Render cart template with items and total cost
-#     return templates.TemplateResponse("cart.html", {"request": request, "cart_items": cart_items, "total": total})
+    # Fetch user by ID and update role
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user.role = role
+    db.commit()
+    return {"message": f"User {user.username}'s role updated to {role}"}
 
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
+@app.post("/add_to_cart/{product_id}")
+async def add_to_cart(product_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_current_user)):
+    cart = get_or_create_cart(db, user_id)
+    
+    # Check if the product is already in the cart
+    cart_item = db.query(CartItem).filter(CartItem.cart_id == cart.id, CartItem.product_id == product_id).first()
+    
+    if cart_item:
+        # If already in the cart, increase quantity
+        cart_item.quantity += 1
+    else:
+        # If not, create a new CartItem for this product
+        cart_item = CartItem(cart_id=cart.id, product_id=product_id, quantity=1)
+        db.add(cart_item)
+    
+    db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+@app.get("/cart", response_class=HTMLResponse)
+async def view_cart(request: Request, db: Session = Depends(get_db), user_id: int = Depends(get_current_user)):
+    cart = get_or_create_cart(db, user_id)
+    cart_items = cart.items if cart else []
+    total_price = sum(item.product.price * item.quantity for item in cart_items)
+    return templates.TemplateResponse("cart.html", {"request": request, "cart_items": cart_items, "total_price": total_price})
+
+
+
+
+    
+
+# cart = []
+
+@app.get("/cart")
+def view_cart(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Fetch all cart items for the current user
+    cart_items = db.query(Cart).filter(Cart.user_id == current_user.id).all()
+    print(f"Cart items for user {current_user.id}: {[(item.product_id, item.quantity) for item in cart_items]}")  # Debugging
+    total = sum(item.product.price * item.quantity for item in cart_items)
+    
+    # Render cart template with items and total cost
+    return templates.TemplateResponse("cart.html", {"request": request, "cart_items": cart_items, "total": total})
+
+
+# if __name__ == "__main__":
+#     import uvicorn
+#     uvicorn.run(app, host="127.0.0.1", port=8000)
 
 
 # fastapi dev main_project/main.py
