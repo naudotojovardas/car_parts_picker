@@ -65,37 +65,3 @@ class CarParameter(Base):
     parts = relationship("Part", back_populates="part_parameters")
 
 
-def add_part_to_db(db: Session, name: str, description: str, price: float, currency: str, stock_quantity: int, part_parameters: int = None, photo_path: str = None):
-    new_part = Part(
-        part_name=name,
-        description=description,
-        price=price,
-        currency=currency,
-        stock_quantity=stock_quantity,
-        part_parameters_id=part_parameters,
-        photo_path=photo_path
-    )
-    db.add(new_part)  # Add the new part to the session.
-    db.commit()  # Commit the transaction to save changes in the DB.
-
-
-# 16. Add car part parameters to the `part_parameters` table in the database.
-def add_part_parameters_to_db(db: Session, car_name: str, manufacturer: str, year: int, engine_type: str):
-    print(f"engine type is {engine_type} 2")
-    new_part_parameter = CarParameter(
-        car_name=car_name,
-        manufacturer=manufacturer,
-        year=year,
-        engine_type=engine_type
-    )
-    db.add(new_part_parameter)  # Add the new parameters to the session.
-    db.commit()  # Commit the transaction to save the new parameters.
-
-
-# 17. Remove a part from the `parts` table in the database by its ID.
-def remove_part_from_db(db: Session, part_id: int):
-    part_to_remove = db.query(Part).filter(Part.id == part_id).first()  # Find the part by ID.
-    if part_to_remove:
-        db.delete(part_to_remove)  # Mark the part for deletion.
-        db.commit()  # Commit the transaction to apply the deletion.
-

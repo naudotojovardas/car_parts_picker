@@ -1,22 +1,21 @@
 from fastapi import FastAPI, Form, Depends, HTTPException, File, UploadFile, status, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
-import frontend
-from frontend import generate_html_content
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 import os
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
-from backend import (
+from crud_authorization import (
     get_password_hash, authenticate_user, create_access_token,
     get_current_user, pwd_context,
-     ADMIN_PASSWORD, get_or_create_cart 
+     ADMIN_PASSWORD, get_or_create_cart, car_facts
 )
-from db_models import  add_part_to_db, add_part_parameters_to_db, remove_part_from_db, User, Part, CartItem, Cart
+from db_models import User, Part, CartItem, Cart, CarParameter
 from pydantic_models import Token
 from database import get_db, create_database
+import random
 
 create_database()
 
@@ -42,20 +41,50 @@ async def title_page(request: Request):
 @app.get("/main", response_class=HTMLResponse)
 async def shop(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     products = db.query(Part).all()
+    random_fact = random.choice(car_facts)
     
     # Get or create the user's cart and calculate item count
     cart = get_or_create_cart(db, user.id)
     cart_count = sum(item.quantity for item in cart.items)
 
-    return templates.TemplateResponse("shop.html", {"request": request, "products": products, "cart_count": cart_count})
+    return templates.TemplateResponse("shop.html", {"request": request, "products": products, "cart_count": cart_count, "random_fact": random_fact})
+
+
+def generate_html_content(db: Session):
+    car_message = random.choice(car_facts)
+
+    # Query parts and parameters
+    parts_list = db.query(Part).all()
+    part_parameters_list = db.query(CarParameter).all()
+
+    # Generate the HTML for parts
+    parts_html = "".join(
+        f"<li>{part.part_name}: {part.description} - {part.price:.2f} {part.currency} | Stock: {part.stock_quantity} | Car: {part.part_parameters.car_name if part.part_parameters else 'N/A'}" +
+        f"<form action='/remove_part/' method='post' style='display:inline; margin-left: 10px;'><input type='hidden' name='id' value='{part.id}' /><input type='password' name='admin_code' placeholder='Admin Code' required style='padding: 3px; width: 120px; margin-right: 5px;' /><button type='submit' style='padding: 3px 6px; background-color: #e74c3c; color: white; border: none; cursor: pointer; border-radius: 5px;'>Remove</button></form>" +
+        (f"<br><img src='/static/{part.photo_path}' alt='No Image' style='max-width: 200px; max-height: 200px; margin-top: 10px;'>" if part.photo_path else '') +
+        "</li>" 
+        for part in parts_list
+    )
+
+    # Generate the HTML for car parameters
+    part_parameters_html = "".join(
+        f"<option value='{parameter.id}'>{parameter.car_name} ({parameter.year}) - {parameter.engine_type}</option>" for parameter in part_parameters_list
+    )
+
+    # Return a dictionary to pass to the HTML template
+    return {
+        "car_message": car_message,
+        "parts_html": parts_html,
+        "part_parameters_html": part_parameters_html
+    }
 
 
 # Main webpage route
 @app.get("/shop", response_class=HTMLResponse)
-async def read_root(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+async def read_root(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     try:
-        html_content = generate_html_content(db)
-        return HTMLResponse(content=html_content)
+        content = generate_html_content(db)
+        return templates.TemplateResponse("admin.html", {"request": request, **content})
     except Exception as e:
         return HTMLResponse(content=f"<h1>Error: {e}</h1>")
 
@@ -299,34 +328,12 @@ async def add_to_cart(product_id: int, quantity: int = Form(...), db: Session = 
     return {"message": "Item added to cart"}
 
 
-# @app.post("/add_to_cart/{product_id}")
-# async def add_to_cart(product_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_current_user)):
-#     cart = get_or_create_cart(db, user_id)
-    
-#     # Check if the product is already in the cart
-#     cart_item = db.query(CartItem).filter(CartItem.cart_id == cart.id, CartItem.product_id == product_id).first()
-    
-#     if cart_item:
-#         # If already in the cart, increase quantity
-#         cart_item.quantity += 1
-#     else:
-#         # If not, create a new CartItem for this product
-#         cart_item = CartItem(cart_id=cart.id, product_id=product_id, quantity=1)
-#         db.add(cart_item)
-    
-#     db.commit()
-#     return RedirectResponse(url="/", status_code=303)
-
 @app.get("/cart", response_class=HTMLResponse)
 async def view_cart(request: Request, db: Session = Depends(get_db), user_id: int = Depends(get_current_user)):
     cart = get_or_create_cart(db, user_id)
     cart_items = cart.items if cart else []
     total_price = sum(item.product.price * item.quantity for item in cart_items)
     return templates.TemplateResponse("cart.html", {"request": request, "cart_items": cart_items, "total_price": total_price})
-
-
-
-
 
 
 @app.get("/cart")
@@ -338,6 +345,43 @@ def view_cart(request: Request, db: Session = Depends(get_db), current_user: Use
     
     # Render cart template with items and total cost
     return templates.TemplateResponse("cart.html", {"request": request, "cart_items": cart_items, "total": total})
+
+
+def add_part_to_db(db: Session, name: str, description: str, price: float, currency: str, stock_quantity: int, part_parameters: int = None, photo_path: str = None):
+    new_part = Part(
+        part_name=name,
+        description=description,
+        price=price,
+        currency=currency,
+        stock_quantity=stock_quantity,
+        part_parameters_id=part_parameters,
+        photo_path=photo_path
+    )
+    db.add(new_part)  # Add the new part to the session.
+    db.commit()  # Commit the transaction to save changes in the DB.
+
+
+# Add car part parameters to the `part_parameters` table in the database.
+def add_part_parameters_to_db(db: Session, car_name: str, manufacturer: str, year: int, engine_type: str):
+    print(f"engine type is {engine_type} 2")
+    new_part_parameter = CarParameter(
+        car_name=car_name,
+        manufacturer=manufacturer,
+        year=year,
+        engine_type=engine_type
+    )
+    db.add(new_part_parameter)  # Add the new parameters to the session.
+    db.commit()  # Commit the transaction to save the new parameters.
+
+
+# Remove a part from the `parts` table in the database by its ID.
+def remove_part_from_db(db: Session, part_id: int):
+    part_to_remove = db.query(Part).filter(Part.id == part_id).first()  # Find the part by ID.
+    if part_to_remove:
+        db.delete(part_to_remove)  # Mark the part for deletion.
+        db.commit()  # Commit the transaction to apply the deletion.
+
+
 
 
 # if __name__ == "__main__":

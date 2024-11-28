@@ -96,20 +96,6 @@ def get_current_user(token: str = Depends(get_token_from_cookie), db: Session = 
     return user
 
 
-# User retrieval dependency using cookie token
-# def get_current_user(token: str = Depends(get_token_from_cookie)):
-#     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-#         username: str = payload.get("sub")
-#         if username is None:
-#             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
-#     except JWTError:
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
-#     return username
-
-
-
-
 def add_to_cart(db: Session, user_id: int, product_id: int, quantity: int = 1):
     cart = get_or_create_cart(db, user_id)
     cart_item = db.query(CartItem).filter(CartItem.cart_id == cart.id, CartItem.product_id == product_id).first()
@@ -146,3 +132,22 @@ def get_or_create_cart(db: Session, user_id: int):
         db.refresh(cart)
     return cart
 
+
+car_facts = [
+    "The first car was invented in 1886 by Karl Benz.",
+    "There are over 1 billion cars in use worldwide.",
+    "The world's fastest car is the Bugatti Chiron Super Sport 300+.",
+    "75% of cars produced by Rolls-Royce are still on the road.",
+    "Electric cars were invented before gasoline cars.",
+    "The average car has about 30,000 parts.",
+    "Speed is the ultimate thrill!",
+    "Shift into high gear and feel the rush!",
+    "Life is too short for slow cars.",
+    "Drive fast, but drive safe!",
+    "Four wheels move the body, but two wheels move the soul.",
+    "Nothing beats the sound of a roaring engine!",
+    "Fast cars, fast dreams!"
+    "Mercedes is comfort, BMW is looks, but Audi is power! or something like that...",
+    "The best car safety device is a rear-view mirror with a cop in it.",
+    "Red and blue go whoo whoo whoo, but red and blue flashing lights mean you're screwed."
+]
