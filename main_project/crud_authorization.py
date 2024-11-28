@@ -33,26 +33,21 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 ADMIN_PASSWORD = "admin123"
 
-def get_password_hash(password: str):
+def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
-def verify_password(plain_password: str, hashed_password: str):
+def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta if expires_delta else timedelta(minutes=15))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-# def authenticate_user(username: str, password: str, db: Session):
-#     user = db.query(User).filter(User.email == username).first()
-#     if not user or not verify_password(password, user.hashed_password):
-#         return False
-#     return user
 
-def authenticate_user(username: str, password: str, db: Session):
+def authenticate_user(username: str, password: str, db: Session) -> User:
     user = db.query(User).filter(User.username == username).first()
     
     if not user:
@@ -65,7 +60,7 @@ def authenticate_user(username: str, password: str, db: Session):
     
     return user
 
-def get_token_from_cookie(request: Request):
+def get_token_from_cookie(request: Request) -> str:
     token = request.cookies.get("access_token")
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
@@ -96,7 +91,7 @@ def get_current_user(token: str = Depends(get_token_from_cookie), db: Session = 
     return user
 
 
-def add_to_cart(db: Session, user_id: int, product_id: int, quantity: int = 1):
+def add_to_cart(db: Session, user_id: int, product_id: int, quantity: int = 1) -> Cart:
     cart = get_or_create_cart(db, user_id)
     cart_item = db.query(CartItem).filter(CartItem.cart_id == cart.id, CartItem.product_id == product_id).first()
     if cart_item:
@@ -108,7 +103,7 @@ def add_to_cart(db: Session, user_id: int, product_id: int, quantity: int = 1):
     return cart
 
 @app.post("/cart/update/{item_id}")
-async def update_cart_item(item_id: int, quantity: int = Form(...), db: Session = Depends(get_db), user_id: int = Depends(get_current_user)):
+async def update_cart_item(item_id: int, quantity: int = Form(...), db: Session = Depends(get_db), user_id: int = Depends(get_current_user)) -> RedirectResponse:
     cart_item = db.query(CartItem).filter(CartItem.id == item_id, CartItem.cart.user_id == user_id).first()
     if cart_item:
         cart_item.quantity = quantity
@@ -116,14 +111,14 @@ async def update_cart_item(item_id: int, quantity: int = Form(...), db: Session 
     return RedirectResponse(url="/cart", status_code=303)
 
 @app.post("/cart/remove/{item_id}")
-async def remove_cart_item(item_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_current_user)):
+async def remove_cart_item(item_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_current_user)) -> RedirectResponse:
     cart_item = db.query(CartItem).filter(CartItem.id == item_id, CartItem.cart.user_id == user_id).first()
     if cart_item:
         db.delete(cart_item)
         db.commit()
     return RedirectResponse(url="/cart", status_code=303)
 
-def get_or_create_cart(db: Session, user_id: int):
+def get_or_create_cart(db: Session, user_id: int) -> Cart:
     cart = db.query(Cart).filter(Cart.user_id == user_id).first()
     if not cart:
         cart = Cart(user_id=user_id)

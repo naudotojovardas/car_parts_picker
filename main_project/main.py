@@ -35,11 +35,11 @@ templates = Jinja2Templates(directory="templates")
 
 # Title page route
 @app.get("/", response_class=HTMLResponse)
-async def title_page(request: Request):
+async def title_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/main", response_class=HTMLResponse)
-async def shop(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+async def shop(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> HTMLResponse:
     products = db.query(Part).all()
     random_fact = random.choice(car_facts)
     
@@ -50,7 +50,7 @@ async def shop(request: Request, db: Session = Depends(get_db), user: User = Dep
     return templates.TemplateResponse("shop.html", {"request": request, "products": products, "cart_count": cart_count, "random_fact": random_fact})
 
 
-def generate_html_content(db: Session):
+def generate_html_content(db: Session) -> dict:
     car_message = random.choice(car_facts)
 
     # Query parts and parameters
@@ -81,7 +81,7 @@ def generate_html_content(db: Session):
 
 # Main webpage route
 @app.get("/shop", response_class=HTMLResponse)
-async def read_root(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+async def read_root(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> HTMLResponse:
     try:
         content = generate_html_content(db)
         return templates.TemplateResponse("admin.html", {"request": request, **content})
@@ -93,17 +93,17 @@ async def read_root(request: Request, db: Session = Depends(get_db), user: User 
 
 # Login page route
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
+async def login_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("login.html", {"request": request})
 
 
 @app.get("/register", response_class=HTMLResponse)
-async def show_registration_form(request: Request):
+async def show_registration_form(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("register.html", {"request": request})
 
 
 @app.post("/login")
-async def login(request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+async def login(request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)) -> RedirectResponse:
     print(f"Login attempt for user: {username}")
     
     # Use the session `db` to query the database
@@ -134,7 +134,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
 
 # Register a User
 @app.post("/register", response_class=HTMLResponse)
-async def register(request: Request, username: str = Form(...), email: str = Form(...), password: str = Form(...),role: str = Form("user"), db: Session = Depends(get_db)):
+async def register(request: Request, username: str = Form(...), email: str = Form(...), password: str = Form(...),role: str = Form("user"), db: Session = Depends(get_db)) -> HTMLResponse:
     user_in_db = db.query(User).filter(User.email == email).first()
     if user_in_db:
         raise HTTPException(status_code=400, detail="Username already registered")
@@ -152,7 +152,7 @@ async def register(request: Request, username: str = Form(...), email: str = For
 
 # Login User and Issue Token
 @app.post("/token")
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)) -> dict:
     user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
         raise HTTPException(
@@ -172,7 +172,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 # Protected Route
 @app.get("/users/me/")
-async def read_users_me(current_user: User = Depends(get_current_user)):
+async def read_users_me(current_user: User = Depends(get_current_user)) -> dict:
     return {"username": current_user['username'], "email": current_user['email']}
 
 
@@ -188,7 +188,7 @@ async def add_part(
     part_parameters: int = Form(None),  # Optional
     file: UploadFile = None,  # Optional file upload
     db: Session = Depends(get_db)
-):
+) -> HTMLResponse:
     try:
         # Save the file to the server if it was uploaded
         file_location = None
@@ -236,7 +236,7 @@ async def add_part_parameters(
     year: int = Form(...),
     engine_type: str = Form(...),
     db: Session = Depends(get_db)    
-):
+) -> HTMLResponse:
     print(f"engine type is {engine_type} 1")
     try:
         add_part_parameters_to_db(db, car_name, manufacturer, year, engine_type)
@@ -255,7 +255,7 @@ async def add_part_parameters(
 
 # Remove part route
 @app.post("/remove_part/", response_class=HTMLResponse)
-async def remove_part(db: Session = Depends(get_db), id: int = Form(...), admin_code: str = Form(...)):
+async def remove_part(db: Session = Depends(get_db), id: int = Form(...), admin_code: str = Form(...)) -> HTMLResponse:
     try:
         if admin_code != ADMIN_PASSWORD:
             raise HTTPException(status_code=403, detail="Unauthorized: Incorrect Admin Code")
@@ -276,7 +276,7 @@ async def remove_part(db: Session = Depends(get_db), id: int = Form(...), admin_
     
 
 @app.put("/admin/set_role/{user_id}")
-async def set_role(user_id: int, role: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def set_role(user_id: int, role: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     # Check if the current user is an admin
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Only admins can set roles")
@@ -292,7 +292,7 @@ async def set_role(user_id: int, role: str, current_user: User = Depends(get_cur
 
 
 @app.post("/add_to_cart/{product_id}")
-async def add_to_cart(product_id: int, quantity: int = Form(...), db: Session = Depends(get_db)):
+async def add_to_cart(product_id: int, quantity: int = Form(...), db: Session = Depends(get_db)) -> dict:
     # Fetch the product from the database
     product = db.query(CartItem).filter(CartItem.cart_id == product_id).first()
     
@@ -329,7 +329,7 @@ async def add_to_cart(product_id: int, quantity: int = Form(...), db: Session = 
 
 
 @app.get("/cart", response_class=HTMLResponse)
-async def view_cart(request: Request, db: Session = Depends(get_db), user_id: int = Depends(get_current_user)):
+async def view_cart(request: Request, db: Session = Depends(get_db), user_id: int = Depends(get_current_user)) -> HTMLResponse:
     cart = get_or_create_cart(db, user_id)
     cart_items = cart.items if cart else []
     total_price = sum(item.product.price * item.quantity for item in cart_items)
@@ -347,7 +347,7 @@ def view_cart(request: Request, db: Session = Depends(get_db), current_user: Use
     return templates.TemplateResponse("cart.html", {"request": request, "cart_items": cart_items, "total": total})
 
 
-def add_part_to_db(db: Session, name: str, description: str, price: float, currency: str, stock_quantity: int, part_parameters: int = None, photo_path: str = None):
+def add_part_to_db(db: Session, name: str, description: str, price: float, currency: str, stock_quantity: int, part_parameters: int = None, photo_path: str = None) -> None:
     new_part = Part(
         part_name=name,
         description=description,
@@ -362,7 +362,7 @@ def add_part_to_db(db: Session, name: str, description: str, price: float, curre
 
 
 # Add car part parameters to the `part_parameters` table in the database.
-def add_part_parameters_to_db(db: Session, car_name: str, manufacturer: str, year: int, engine_type: str):
+def add_part_parameters_to_db(db: Session, car_name: str, manufacturer: str, year: int, engine_type: str) -> None:
     print(f"engine type is {engine_type} 2")
     new_part_parameter = CarParameter(
         car_name=car_name,
@@ -375,7 +375,7 @@ def add_part_parameters_to_db(db: Session, car_name: str, manufacturer: str, yea
 
 
 # Remove a part from the `parts` table in the database by its ID.
-def remove_part_from_db(db: Session, part_id: int):
+def remove_part_from_db(db: Session, part_id: int) -> None:
     part_to_remove = db.query(Part).filter(Part.id == part_id).first()  # Find the part by ID.
     if part_to_remove:
         db.delete(part_to_remove)  # Mark the part for deletion.
