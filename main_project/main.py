@@ -10,7 +10,7 @@ from datetime import timedelta
 from crud_authorization import (
     get_password_hash, authenticate_user, create_access_token,
     get_current_user, pwd_context,
-     ADMIN_PASSWORD, get_or_create_cart, car_facts
+     ADMIN_PASSWORD, get_or_create_cart, add_part_to_db, add_part_parameters_to_db, remove_part_from_db
 )
 from db_models import User, Part, CartItem, Cart, CarParameter
 from pydantic_models import Token
@@ -228,6 +228,7 @@ async def add_part(
     except Exception as e:
         return HTMLResponse(content=f"<h1>Error: {e}</h1>")
 
+
 # Add part parameters route
 @app.post("/add_part_parameters/", response_class=HTMLResponse)
 async def add_part_parameters(
@@ -346,42 +347,24 @@ def view_cart(request: Request, db: Session = Depends(get_db), current_user: Use
     # Render cart template with items and total cost
     return templates.TemplateResponse("cart.html", {"request": request, "cart_items": cart_items, "total": total})
 
-
-def add_part_to_db(db: Session, name: str, description: str, price: float, currency: str, stock_quantity: int, part_parameters: int = None, photo_path: str = None) -> None:
-    new_part = Part(
-        part_name=name,
-        description=description,
-        price=price,
-        currency=currency,
-        stock_quantity=stock_quantity,
-        part_parameters_id=part_parameters,
-        photo_path=photo_path
-    )
-    db.add(new_part)  # Add the new part to the session.
-    db.commit()  # Commit the transaction to save changes in the DB.
-
-
-# Add car part parameters to the `part_parameters` table in the database.
-def add_part_parameters_to_db(db: Session, car_name: str, manufacturer: str, year: int, engine_type: str) -> None:
-    print(f"engine type is {engine_type} 2")
-    new_part_parameter = CarParameter(
-        car_name=car_name,
-        manufacturer=manufacturer,
-        year=year,
-        engine_type=engine_type
-    )
-    db.add(new_part_parameter)  # Add the new parameters to the session.
-    db.commit()  # Commit the transaction to save the new parameters.
-
-
-# Remove a part from the `parts` table in the database by its ID.
-def remove_part_from_db(db: Session, part_id: int) -> None:
-    part_to_remove = db.query(Part).filter(Part.id == part_id).first()  # Find the part by ID.
-    if part_to_remove:
-        db.delete(part_to_remove)  # Mark the part for deletion.
-        db.commit()  # Commit the transaction to apply the deletion.
-
-
+car_facts = [
+    "The first car was invented in 1886 by Karl Benz.",
+    "There are over 1 billion cars in use worldwide.",
+    "The world's fastest car is the Bugatti Chiron Super Sport 300+.",
+    "75% of cars produced by Rolls-Royce are still on the road.",
+    "Electric cars were invented before gasoline cars.",
+    "The average car has about 30,000 parts.",
+    "Speed is the ultimate thrill!",
+    "Shift into high gear and feel the rush!",
+    "Life is too short for slow cars.",
+    "Drive fast, but drive safe!",
+    "Four wheels move the body, but two wheels move the soul.",
+    "Nothing beats the sound of a roaring engine!",
+    "Fast cars, fast dreams!"
+    "Mercedes is comfort, BMW is looks, but Audi is power! or something like that...",
+    "The best car safety device is a rear-view mirror with a cop in it.",
+    "Red and blue go whoo whoo whoo, but red and blue flashing lights mean you're screwed."
+]
 
 
 # if __name__ == "__main__":
