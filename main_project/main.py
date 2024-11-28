@@ -12,11 +12,11 @@ from datetime import timedelta
 from backend import (
     get_password_hash, authenticate_user, create_access_token,
     get_current_user, pwd_context,
-     ADMIN_PASSWORD
+     ADMIN_PASSWORD, get_or_create_cart 
 )
-from db_models import  add_part_to_db, add_part_parameters_to_db, remove_part_from_db, User, Part
+from db_models import  add_part_to_db, add_part_parameters_to_db, remove_part_from_db, User, Part, CartItem, Cart
 from pydantic_models import Token
-from database import get_db, create_database, get_or_create_cart, CartItem, Cart
+from database import get_db, create_database
 
 create_database()
 
@@ -39,7 +39,7 @@ templates = Jinja2Templates(directory="templates")
 async def title_page(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.get("/shop", response_class=HTMLResponse)
+@app.get("/main", response_class=HTMLResponse)
 async def shop(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     products = db.query(Part).all()
     
@@ -51,7 +51,7 @@ async def shop(request: Request, db: Session = Depends(get_db), user: User = Dep
 
 
 # Main webpage route
-@app.get("/main", response_class=HTMLResponse)
+@app.get("/shop", response_class=HTMLResponse)
 async def read_root(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     try:
         html_content = generate_html_content(db)
@@ -157,16 +157,21 @@ async def add_part(
     currency: str = Form(...),
     stock_quantity: int = Form(...),
     part_parameters: int = Form(None),  # Optional
-    file: UploadFile = File(None),  # Optional file upload
+    file: UploadFile = None,  # Optional file upload
     db: Session = Depends(get_db)
 ):
     try:
         # Save the file to the server if it was uploaded
         file_location = None
-        if file:
+        print(f"File: {file}")
+        file_content = await file.read()
+        if file_content:
+            print(f"Saving file: {file.filename}")
             file_location = os.path.join(UPLOAD_DIR, file.filename)
+            print(f"File location: {file_location}")
             with open(file_location, "wb") as file_object:
-                file_object.write(file.file.read())
+                file_object.write(file_content)
+
 
         # Call the add_part_to_db function with the path to the saved file
         add_part_to_db(
@@ -258,22 +263,59 @@ async def set_role(user_id: int, role: str, current_user: User = Depends(get_cur
 
 
 @app.post("/add_to_cart/{product_id}")
-async def add_to_cart(product_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_current_user)):
-    cart = get_or_create_cart(db, user_id)
+async def add_to_cart(product_id: int, quantity: int = Form(...), db: Session = Depends(get_db)):
+    # Fetch the product from the database
+    product = db.query(CartItem).filter(CartItem.cart_id == product_id).first()
     
-    # Check if the product is already in the cart
-    cart_item = db.query(CartItem).filter(CartItem.cart_id == cart.id, CartItem.product_id == product_id).first()
+    if not product:
+        return {"error": "Product not found"}
     
+    # Check if enough stock is available
+    if product.quantity < quantity:
+        return {"error": "Not enough stock"}
+    
+    # Check if the item is already in the cart
+    cart_item = db.query(CartItem).filter(CartItem.id == product_id).first()
     if cart_item:
-        # If already in the cart, increase quantity
-        cart_item.quantity += 1
+        # Update the quantity if the item is already in the cart
+        if product.stock_quantity >= cart_item.quantity + quantity:
+            cart_item.quantity += quantity
+        else:
+            return {"error": "Not enough stock"}
     else:
-        # If not, create a new CartItem for this product
-        cart_item = CartItem(cart_id=cart.id, product_id=product_id, quantity=1)
-        db.add(cart_item)
+        # Add the item to the cart
+        new_cart_item = CartItem(
+            id=product.id,
+            cart_id=product_id,
+            part_id=product_id,
+            quantity=quantity
+        )
+        db.add(new_cart_item)
     
+    # Reduce the product stock
+    product.quantity -= quantity
     db.commit()
-    return RedirectResponse(url="/", status_code=303)
+    
+    return {"message": "Item added to cart"}
+
+
+# @app.post("/add_to_cart/{product_id}")
+# async def add_to_cart(product_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_current_user)):
+#     cart = get_or_create_cart(db, user_id)
+    
+#     # Check if the product is already in the cart
+#     cart_item = db.query(CartItem).filter(CartItem.cart_id == cart.id, CartItem.product_id == product_id).first()
+    
+#     if cart_item:
+#         # If already in the cart, increase quantity
+#         cart_item.quantity += 1
+#     else:
+#         # If not, create a new CartItem for this product
+#         cart_item = CartItem(cart_id=cart.id, product_id=product_id, quantity=1)
+#         db.add(cart_item)
+    
+#     db.commit()
+#     return RedirectResponse(url="/", status_code=303)
 
 @app.get("/cart", response_class=HTMLResponse)
 async def view_cart(request: Request, db: Session = Depends(get_db), user_id: int = Depends(get_current_user)):
@@ -285,9 +327,7 @@ async def view_cart(request: Request, db: Session = Depends(get_db), user_id: in
 
 
 
-    
 
-# cart = []
 
 @app.get("/cart")
 def view_cart(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

@@ -16,7 +16,7 @@ class User(Base):
     hashed_password = Column(String)
     role = Column(String, default="user")
     
-    cart = relationship("Cart", uselist=False, back_populates="user")  # Relationship to Cart
+    cart = relationship("Cart", back_populates="user")  # Matches "user" in Cart
 
 
 class Part(Base):
@@ -30,17 +30,17 @@ class Part(Base):
     part_parameters_id = Column(Integer, ForeignKey("part_parameters.id"), nullable=True)
     part_number = Column(String)
     manufacturer = Column(String)
-    photo_path = Column(String)
+    photo_path = Column(String, nullable=True)
 
     part_parameters = relationship("CarParameter", back_populates="parts")
 
 class Cart(Base):
     __tablename__ = "carts"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # Corrected foreign key
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     # Relationship to CartItem, with lazy loading of items
-    items = relationship("CartItem", back_populates="cart")
+    items = relationship("CartItem", back_populates="cart")  # Changed to "items"
     user = relationship("User", back_populates="cart")  # Relationship to User
 
 class CartItem(Base):
@@ -51,7 +51,7 @@ class CartItem(Base):
     quantity = Column(Integer, default=1)
 
     # Reverse relationship to Cart
-    cart = relationship("Cart", back_populates="items")
+    cart = relationship("Cart", back_populates="items")  # Matches "items" in Cart
 
 
 class CarParameter(Base):

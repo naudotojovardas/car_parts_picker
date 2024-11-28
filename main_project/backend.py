@@ -5,7 +5,7 @@ from passlib.context import CryptContext
 from datetime import timedelta, datetime
 from fastapi.middleware.cors import CORSMiddleware
 from jose import jwt, JWTError
-from db_models import User
+from db_models import User, Cart, CartItem
 from database import get_db
 from typing import Optional
 from fastapi.responses import RedirectResponse
