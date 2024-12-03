@@ -7,11 +7,12 @@ from starlette.requests import Request
 import os
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
-from crud_authorization import (
+from auth import (
     get_password_hash, authenticate_user, create_access_token,
     get_current_user, pwd_context,
-     ADMIN_PASSWORD, get_or_create_cart, add_part_to_db, add_part_parameters_to_db, remove_part_from_db
+     ADMIN_PASSWORD
 )
+from crud import add_part_parameters_to_db, add_part_to_db, remove_part_from_db, get_or_create_cart
 from db_models import User, Part, CartItem, Cart, CarParameter
 from pydantic_models import Token
 from database import get_db, create_database
@@ -367,9 +368,9 @@ car_facts = [
 ]
 
 
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="127.0.0.1", port=8000)
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
 # fastapi dev main_project/main.py

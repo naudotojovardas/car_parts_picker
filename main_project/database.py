@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 Base = declarative_base()
 
 def config():
-    return "postgresql://postgres:testas000@localhost:5432/car_parts_db"
+    return "postgresql://postgres:testas000@host.docker.internal:5432/car_parts_db"
 
 
 engine = create_engine(config())
