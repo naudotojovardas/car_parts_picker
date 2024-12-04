@@ -30,16 +30,16 @@ Before you begin, ensure you have met the following requirements:
 ###2. Create a Virtual Environment
 #Create a virtual environment to manage dependencies:
 
-python3 -m venv venv
+	python3 -m venv venv
 
 
 ###3. Activate the virtual environment:
 
 #On Linux/macOS:
-source venv/bin/activate
+	source venv/bin/activate
 
 #On Windows:
-.\venv\Scripts\activate
+	.\venv\Scripts\activate
 
 ###4. Docker Setup
 To run the application in Docker, follow these steps.
