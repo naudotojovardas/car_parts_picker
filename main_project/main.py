@@ -60,14 +60,14 @@ def generate_html_content(db: Session) -> dict:
 
     # Generate the HTML for parts
     parts_html = "".join(
-        f"<li>{part.part_name}: {part.description} - {part.price:.2f} {part.currency} | Stock: {part.stock_quantity} | Car: {part.part_parameters.car_name if part.part_parameters else 'N/A'}" +
+        f"<li>{part.part_name}: {part.description} - {part.price:.2f} {part.currency} | Stock: {part.stock_quantity} | Car: {part.part_parameters if part.part_parameters else 'N/A'}" +
         f"<form action='/remove_part/' method='post' style='display:inline; margin-left: 10px;'><input type='hidden' name='id' value='{part.id}' /><input type='password' name='admin_code' placeholder='Admin Code' required style='padding: 3px; width: 120px; margin-right: 5px;' /><button type='submit' style='padding: 3px 6px; background-color: #e74c3c; color: white; border: none; cursor: pointer; border-radius: 5px;'>Remove</button></form>" +
         (f"<br><img src='/static/{part.photo_path}' alt='No Image' style='max-width: 200px; max-height: 200px; margin-top: 10px;'>" if part.photo_path else '') +
         "</li>" 
         for part in parts_list
     )
 
-    # Generate the HTML for car parameters
+    # Generate the HTML for part parameters
     part_parameters_html = "".join(
         f"<option value='{parameter.id}'>{parameter.car_name} ({parameter.year}) - {parameter.engine_type}</option>" for parameter in part_parameters_list
     )
@@ -233,6 +233,7 @@ async def add_part(
 # Add part parameters route
 @app.post("/add_part_parameters/", response_class=HTMLResponse)
 async def add_part_parameters(
+    request: Request,
     car_name: str = Form(...),
     manufacturer: str = Form(...),
     year: int = Form(...),
@@ -245,7 +246,7 @@ async def add_part_parameters(
         return HTMLResponse(content="""
         <html>
         <head>
-            <meta http-equiv="refresh" content="0;url=/main" />
+            <meta http-equiv="refresh" content="0;url=/shop" />
         </head>
         <body>
             <p>Part parameters added successfully! Redirecting...</p>
@@ -254,6 +255,8 @@ async def add_part_parameters(
         """)
     except Exception as e:
         return HTMLResponse(content=f"<h1>Error: {e}</h1>")
+
+
 
 # Remove part route
 @app.post("/remove_part/", response_class=HTMLResponse)
@@ -293,60 +296,151 @@ async def set_role(user_id: int, role: str, current_user: User = Depends(get_cur
     return {"message": f"User {user.username}'s role updated to {role}"}
 
 
+
 @app.post("/add_to_cart/{product_id}")
-async def add_to_cart(product_id: int, quantity: int = Form(...), db: Session = Depends(get_db)) -> dict:
-    # Fetch the product from the database
-    product = db.query(CartItem).filter(CartItem.cart_id == product_id).first()
-    
-    if not product:
+async def add_to_cart(
+    product_id: int,
+    quantity: int = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)  # Dependency injection for current user
+) -> dict:
+    # Use the current user's ID
+    user_id = current_user.id
+
+    # Fetch the part
+    part = db.query(Part).filter(Part.id == product_id).first()
+    if not part:
         return {"error": "Product not found"}
     
-    # Check if enough stock is available
-    if product.quantity < quantity:
+    if part.stock_quantity < quantity:
         return {"error": "Not enough stock"}
     
+    # Fetch or create the cart
+    cart = db.query(Cart).filter(Cart.user_id == user_id).first()
+    if not cart:
+        cart = Cart(user_id=user_id)
+        db.add(cart)
+        db.commit()
+        db.refresh(cart)
+    
     # Check if the item is already in the cart
-    cart_item = db.query(CartItem).filter(CartItem.id == product_id).first()
+    cart_item = db.query(CartItem).filter(
+        CartItem.cart_id == cart.id,
+        CartItem.part_id == product_id
+    ).first()
+    
     if cart_item:
-        # Update the quantity if the item is already in the cart
-        if product.stock_quantity >= cart_item.quantity + quantity:
+        if part.stock_quantity >= cart_item.quantity + quantity:
             cart_item.quantity += quantity
         else:
-            return {"error": "Not enough stock"}
+            return {"error": "Not enough stock to add this quantity"}
     else:
-        # Add the item to the cart
         new_cart_item = CartItem(
-            id=product.id,
-            cart_id=product_id,
-            part_id=product_id,
+            cart_id=cart.id,
+            part_id=part.id,
             quantity=quantity
         )
         db.add(new_cart_item)
     
-    # Reduce the product stock
-    product.quantity -= quantity
+    # Reduce the stock
+    part.stock_quantity -= quantity
     db.commit()
     
-    return {"message": "Item added to cart"}
+    return RedirectResponse(url="/cart", status_code=302)
+
+@app.post("/update_cart/{item_id}")
+async def update_cart_item(
+    item_id: int,
+    quantity: int = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Fetch the cart item
+    cart_item = db.query(CartItem).filter(CartItem.id == item_id).first()
+    if not cart_item:
+        return {"error": "Cart item not found"}
+
+    # Fetch the associated part
+    part = db.query(Part).filter(Part.id == cart_item.part_id).first()
+    if not part:
+        return {"error": "Associated part not found"}
+
+    # Check stock availability
+    if part.stock_quantity + cart_item.quantity < quantity:
+        return {"error": "Not enough stock"}
+
+    # Update the quantity
+    part.stock_quantity += cart_item.quantity - quantity  # Restore stock for removed quantity
+    cart_item.quantity = quantity
+
+    db.commit()
+    return RedirectResponse(url="/cart", status_code=302)
 
 
-@app.get("/cart", response_class=HTMLResponse)
-async def view_cart(request: Request, db: Session = Depends(get_db), user_id: int = Depends(get_current_user)) -> HTMLResponse:
-    cart = get_or_create_cart(db, user_id)
-    cart_items = cart.items if cart else []
-    total_price = sum(item.product.price * item.quantity for item in cart_items)
-    return templates.TemplateResponse("cart.html", {"request": request, "cart_items": cart_items, "total_price": total_price})
+@app.post("/remove_from_cart/{item_id}")
+async def remove_from_cart(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Fetch the cart item
+    cart_item = db.query(CartItem).filter(CartItem.id == item_id).first()
+    if not cart_item:
+        return {"error": "Cart item not found"}
+
+    # Fetch the associated part
+    part = db.query(Part).filter(Part.id == cart_item.part_id).first()
+    if part:
+        part.stock_quantity += cart_item.quantity  # Restore stock
+
+    # Remove the item from the cart
+    db.delete(cart_item)
+    db.commit()
+
+    return RedirectResponse(url="/cart", status_code=302)
+
 
 
 @app.get("/cart")
-def view_cart(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Fetch all cart items for the current user
-    cart_items = db.query(Cart).filter(Cart.user_id == current_user.id).all()
-    print(f"Cart items for user {current_user.id}: {[(item.product_id, item.quantity) for item in cart_items]}")  # Debugging
-    total = sum(item.product.price * item.quantity for item in cart_items)
+async def view_cart(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)  # Dependency to get the authenticated user
+):
+    user_id = current_user.id
     
-    # Render cart template with items and total cost
-    return templates.TemplateResponse("cart.html", {"request": request, "cart_items": cart_items, "total": total})
+    # Fetch the user's cart
+    cart = db.query(Cart).filter(Cart.user_id == user_id).first()
+    if not cart or not cart.items:
+        return templates.TemplateResponse(
+            "cart.html",
+            {"request": request, "cart_items": [], "cart_total": 0}
+        )
+
+    # Calculate the total cost and prepare cart items
+    cart_items = []
+    total_cost = 0
+    for item in cart.items:
+        part = db.query(Part).filter(Part.id == item.part_id).first()
+        if part:
+            total_price = part.price * item.quantity
+            total_cost += total_price
+            cart_items.append({
+                "id": item.id,
+                "name": part.part_name,
+                "image_url": part.photo_path or "/static/default_image.png",  # Replace with default image path
+                "price": part.price,
+                "quantity": item.quantity,
+                "stock_quantity": part.stock_quantity,
+                "part_name": part.part_name,
+                "total_price": total_price,
+            })
+    
+    return templates.TemplateResponse(
+        "cart.html",
+        {"request": request, "cart_items": cart_items, "cart_total": total_cost}
+    )
+
 
 car_facts = [
     "The first car was invented in 1886 by Karl Benz.",

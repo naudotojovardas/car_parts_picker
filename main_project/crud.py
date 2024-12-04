@@ -73,7 +73,8 @@ def add_part_parameters_to_db(db: Session, car_name: str, manufacturer: str, yea
         engine_type=engine_type
     )
     db.add(new_part_parameter)  # Add the new parameters to the session.
-    db.commit()  # Commit the transaction to save the new parameters.
+    db.commit()
+    db.refresh(new_part_parameter)  # Commit the transaction to save the new parameters.
 
 
 # Remove a part from the `parts` table in the database by its ID.

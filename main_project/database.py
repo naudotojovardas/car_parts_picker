@@ -25,3 +25,5 @@ def get_db():
         db.close()  
 
 
+# host.docker.internal
+
