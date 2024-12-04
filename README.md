@@ -75,14 +75,14 @@ Create a docker-compose.yml file for managing the FastAPI app and PostgreSQL dat
 
 version: '3.8'
 
-services:
-  web:
-    build: .
-    container_name: fastapi-website
-    ports:
-      - "8000:8000"
-    depends_on:
-      - db
+	services:
+  		web:
+    			build: .
+    			container_name: fastapi-website
+    			ports:
+     				 - "8000:8000"
+    				depends_on:
+     				 - db
     environment:
       - DATABASE_URL=postgresql://postgres:password@db:5432/website_db
     networks:
