@@ -22,9 +22,8 @@ Before you begin, ensure you have met the following requirements:
 
 ### 1. Clone the repository
 
-#```bash
-git clone https://github.com/yourusername/fastapi-postgresql-website.git
-cd fastapi-postgresql-website
+  git clone https://github.com/yourusername/fastapi-postgresql-website.git
+  cd fastapi-postgresql-website
 
 
 ###2. Create a Virtual Environment
