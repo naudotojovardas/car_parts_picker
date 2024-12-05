@@ -354,7 +354,7 @@ async def update_cart_item(
     quantity: int = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
-):
+) -> RedirectResponse:
     # Fetch the cart item
     cart_item = db.query(CartItem).filter(CartItem.id == item_id).first()
     if not cart_item:
@@ -382,7 +382,7 @@ async def remove_from_cart(
     item_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
-):
+) -> RedirectResponse:
     # Fetch the cart item
     cart_item = db.query(CartItem).filter(CartItem.id == item_id).first()
     if not cart_item:
@@ -406,7 +406,7 @@ async def view_cart(
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)  # Dependency to get the authenticated user
-):
+) -> HTMLResponse:
     user_id = current_user.id
     
     # Fetch the user's cart
@@ -462,9 +462,9 @@ car_facts = [
 ]
 
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# if __name__ == "__main__":
+#     import uvicorn
+#     uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
 # fastapi dev main_project/main.py

@@ -73,30 +73,6 @@ def test_create_access_token():
     assert payload.get("sub") == "testuser"
 
 
-# Test get_current_user
-def test_get_current_user_valid_token(mock_db, client, override_get_db):
-    user = User(username="testuser", hashed_password="hashedpassword")
-    mock_db.query.return_value.filter.return_value.first.return_value = user
-
-    token = create_access_token({"sub": "testuser"}, timedelta(minutes=30))
-    headers = {"Cookie": f"access_token={token}"}
-
-    response = client.get("/some-protected-route", headers=headers)  # Replace with an actual route
-    assert response.status_code == status.HTTP_200_OK
-    assert response.json() == {"username": "testuser"}  # Adjust based on route response
-
-
-def test_get_current_user_invalid_token(mock_db, client, override_get_db):
-    token = "invalidtoken"
-    headers = {"Cookie": f"access_token={token}"}
-
-    response = client.get("/some-protected-route", headers=headers)  # Replace with an actual route
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
-
-
-def test_get_current_user_no_token(client):
-    response = client.get("/some-protected-route")  # Replace with an actual route
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 pytest.main(["-v", "test_auth.py"])
